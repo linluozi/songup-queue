@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SongUp v2 · 点歌</title>
+<style>
+  :root{
+    --bg:#0d0d12; --card:#17171f; --line:#26262f; --text:#eceaf3;
+    --muted:#8b8b9c; --accent:#7c6cf0; --accent-2:#a78bfa;
+    --ok:#3ecf8e; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);min-height:100vh;padding:16px 14px 40px;
+  }
+  header{display:flex;align-items:baseline;gap:9px;margin-bottom:4px}
+  h1{font-size:1.12rem;font-weight:650}
+  .tag{font-size:.66rem;padding:2px 6px;border-radius:5px;background:var(--accent);color:#fff}
+  .me{font-size:.74rem;color:var(--muted);margin-bottom:14px;font-variant-numeric:tabular-nums}
+  .me b{color:var(--accent-2);font-weight:600}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px;margin-bottom:12px}
+  .search{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:10px;
+          background:#101017;color:var(--text);font-size:.95rem;font-family:inherit}
+  .search:focus{outline:none;border-color:var(--accent)}
+
+  .results{margin-top:10px;display:flex;flex-direction:column}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .row .name{flex:1;min-width:0;font-size:.9rem;line-height:1.35;
+             overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .row .src{font-size:.62rem;color:var(--muted);border:1px solid var(--line);
+            padding:1px 5px;border-radius:4px;flex:0 0 auto;text-transform:uppercase;letter-spacing:.04em}
+  .add{flex:0 0 auto;background:var(--accent);color:#fff;border:0;border-radius:8px;
+       padding:8px 14px;font-size:.84rem;font-family:inherit;cursor:pointer}
+  .add:hover{filter:brightness(1.12)}
+  .add:disabled{background:#33333f;color:#7a7a8a;cursor:not-allowed}
+
+  .msg{margin-top:10px;font-size:.83rem;min-height:1.1em;line-height:1.4}
+  .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+
+  h2{font-size:.76rem;font-weight:600;color:var(--muted);letter-spacing:.06em;
+     text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between}
+
+  .playing{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:10px;
+           background:linear-gradient(90deg,#241b45,#1b1b28);border:1px solid #332a55;margin-bottom:12px}
+  .playing .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto;
+                animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
+  .playing .t{font-size:.88rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .playing .m{font-size:.7rem;color:var(--muted);margin-left:auto;flex:0 0 auto}
+
+  ol.q{list-style:none;display:flex;flex-direction:column}
+  ol.q li{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:.87rem}
+  ol.q li:last-child{border-bottom:0}
+  ol.q .no{width:16px;color:var(--muted);font-size:.75rem;text-align:right;flex:0 0 auto}
+  ol.q .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  ol.q .b{font-size:.7rem;color:var(--muted);flex:0 0 auto}
+  ol.q li.mine .b{color:var(--accent-2)}
+  .none{color:#5c5c6b;font-size:.84rem;padding:8px 2px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SongUp</h1><span class="tag">v2 · 点歌</span>
+</header>
+<div class="me" id="me">识别中…</div>
+
+<div class="card">
+  <input class="search" id="search" placeholder="搜索曲库…（直接点添加就行）" autocomplete="off">
+  <div class="results" id="results"></div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div class="card">
+  <h2><span>正在播放</span></h2>
+  <div id="playing"></div>
+</div>
+
+<div class="card">
+  <h2><span>排队中</span><span id="count"></span></h2>
+  <ol class="q" id="queue"></ol>
+</div>
+
+<script>
+let myId = null;
+let maxPerUser = 2;
+let myCount = 0;
+let quotaLeft = 2;
+let latestStatus = null;
+
+/* 配额用完后，列表里的「添加」按钮统一置灰 */
+function applyQuotaToButtons() {
+  document.querySelectorAll('.add').forEach((b) => {
+    b.disabled = quotaLeft <= 0;
+    b.title = quotaLeft <= 0 ? '你的名额用完了，等一首播完再点' : '';
+  });
+}
+
+/* ---------- 请求 ---------- */
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  try { return await r.json(); } catch (e) { return { ok: false, error: 'HTTP ' + r.status }; }
+}
+
+function say(text, kind) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + (kind || '');
+  if (text) setTimeout(() => { if (el.textContent === text) { el.textContent = ''; el.className = 'msg'; } }, 3200);
+}
+
+/* ---------- 渲染 ---------- */
+
+function renderPlaying(d) {
+  const box = document.getElementById('playing');
+  box.replaceChildren();
+  if (!d.current) {
+    const p = document.createElement('div');
+    p.className = 'none';
+    p.textContent = '还没开始播，等主持人点「下一首」';
+    box.appendChild(p);
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'playing';
+  wrap.style.marginBottom = '0';
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+
+  const t = document.createElement('span');
+  t.className = 't';
+  t.textContent = d.current.title;      // textContent，曲名不可当 HTML
+
+  const m = document.createElement('span');
+  m.className = 'm';
+  m.textContent = d.current_source === 'fallback' ? '兜底曲目' : 'by ' + d.current.added_by;
+
+  wrap.append(dot, t, m);
+  box.appendChild(wrap);
+}
+
+function renderQueue(d) {
+  const list = document.getElementById('queue');
+  list.replaceChildren();
+  if (!d.queue.length) {
+    const li = document.createElement('li');
+    li.className = 'none';
+    li.style.border = '0';
+    li.textContent = '队列是空的，你可以第一个点歌';
+    list.appendChild(li);
+  } else {
+    d.queue.forEach((s, i) => {
+      const li = document.createElement('li');
+      if (s.added_by === myId) li.classList.add('mine');
+
+      const no = document.createElement('span');
+      no.className = 'no';
+      no.textContent = String(i + 1);
+
+      const t = document.createElement('span');
+      t.className = 't';
+      t.textContent = s.title;
+
+      const b = document.createElement('span');
+      b.className = 'b';
+      b.textContent = s.added_by === myId ? '你' : '';
+
+      li.append(no, t, b);
+      list.appendChild(li);
+    });
+  }
+  document.getElementById('count').textContent = d.queue.length ? d.queue.length + ' 首' : '';
+}
+
+function renderQuota(d) {
+  myCount = (d.user_counts && d.user_counts[myId]) || 0;
+  quotaLeft = Math.max(0, maxPerUser - myCount);
+  const el = document.getElementById('me');
+  el.replaceChildren();
+  const b = document.createElement('b');
+  b.textContent = quotaLeft > 0 ? `还能点 ${quotaLeft} 首` : '你的名额用完了';
+  el.append(document.createTextNode(`你是 ${myId} · 每人上限 ${maxPerUser} 首 · `), b);
+  applyQuotaToButtons();
+}
+
+function renderResults(songs) {
+  const box = document.getElementById('results');
+  box.replaceChildren();
+  if (!songs.length) {
+    const p = document.createElement('div');
+    p.className = 'none';
+    p.textContent = '没搜到，换个关键词试试';
+    box.appendChild(p);
+    return;
+  }
+
+  // 没输关键词时只列前几首，别让手机上滚一屏全是候选
+  const typed = document.getElementById('search').value.trim();
+  const limit = typed ? songs.length : 6;
+  songs.slice(0, limit).forEach((s) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.title;          // 依然 textContent
+
+    const src = document.createElement('span');
+    src.className = 'src';
+    src.textContent = s.kind === 'local' ? '本地' : s.kind === 'bilibili' ? 'B站' : 'YT';
+
+    const btn = document.createElement('button');
+    btn.className = 'add';
+    btn.textContent = '添加';
+    btn.addEventListener('click', () => addSong(s, btn));
+
+    row.append(name, src, btn);
+    box.appendChild(row);
+  });
+
+  if (songs.length > limit) {
+    const more = document.createElement('div');
+    more.className = 'none';
+    more.textContent = `还有 ${songs.length - limit} 首，输入关键词搜索`;
+    box.appendChild(more);
+  }
+  applyQuotaToButtons();
+}
+
+/* ---------- 行为 ---------- */
+
+async function addSong(song, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  const d = await api('/api/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: song.id, title: song.title, url: song.url, kind: song.kind })
+  });
+  if (d.ok) {
+    say('已加入队列 ✓', 'ok');
+  } else {
+    say(d.error || '添加失败', 'err');
+  }
+  btn.disabled = false;
+  btn.textContent = '添加';
+  refresh();
+}
+
+let searchTimer = null;
+function onSearchInput() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(doSearch, 180);   // 防抖：别每敲一个字就打一次接口
+}
+
+async function doSearch() {
+  const q = document.getElementById('search').value.trim();
+  const songs = await api('/api/search?q=' + encodeURIComponent(q));
+  renderResults(Array.isArray(songs) ? songs : []);
+}
+
+async function refresh() {
+  const d = await api('/api/status');
+  if (!d || d.error) return;
+  latestStatus = d;
+  renderPlaying(d);
+  renderQueue(d);
+  if (myId) renderQuota(d);
+}
+
+async function init() {
+  const me = await api('/api/me');
+  myId = me.user_id;
+  maxPerUser = me.max_per_user || 2;
+  await doSearch();
+  await refresh();
+  setInterval(refresh, 2500);
+}
+
+document.getElementById('search').addEventListener('input', onSearchInput);
+init();
+</script>
+</body>
+</html>

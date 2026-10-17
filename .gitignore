@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+server.log
+*.log
+outputs/
+dom_guest.html
+.idea/
+.vscode/

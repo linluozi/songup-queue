@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SongUp v2 · Host</title>
+<style>
+  :root{
+    --bg:#0d0d12; --card:#17171f; --line:#26262f; --text:#eceaf3;
+    --muted:#8b8b9c; --accent:#7c6cf0; --accent-2:#a78bfa; --danger:#e5484d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh; padding:18px 20px 40px;
+  }
+  header{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  h1{font-size:1.25rem;font-weight:650;letter-spacing:.01em}
+  .tag{font-size:.7rem;padding:2px 7px;border-radius:5px;background:var(--accent);color:#fff;letter-spacing:.04em}
+  .meta{margin-left:auto;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+
+  .stage-wrap{background:#000;border-radius:14px;overflow:hidden;position:relative;
+              aspect-ratio:16/9;max-height:64vh;margin:0 auto;border:1px solid var(--line)}
+  #stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+  #stage video,#stage iframe{width:100%;height:100%;border:0;display:block;background:#000}
+  #stage .idle{color:#5c5c6b;font-size:.95rem;text-align:center;line-height:1.7;padding:24px}
+
+  .now{display:flex;align-items:center;gap:10px;margin-top:14px;min-height:26px}
+  .now .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto}
+  .now .dot.pulse{animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
+  .now .title{font-size:1.02rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .now .by{font-size:.78rem;color:var(--muted);flex:0 0 auto}
+  .banner{margin-top:8px;font-size:.78rem;color:#f0c674;background:#2a2318;border:1px solid #4a3d22;
+          padding:6px 10px;border-radius:7px;display:none}
+  .banner.show{display:block}
+
+  .controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  button{
+    font:inherit;font-size:.86rem;padding:9px 16px;border-radius:9px;border:1px solid transparent;
+    background:var(--accent);color:#fff;cursor:pointer;transition:filter .15s,background .15s;
+  }
+  button:hover{filter:brightness(1.12)}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:transparent;border-color:var(--line);color:var(--text)}
+  button.ghost:hover{background:#1e1e28}
+  button.danger{background:var(--danger)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .panel h2{font-size:.82rem;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
+  ol.queue{list-style:none;display:flex;flex-direction:column;gap:2px;max-height:52vh;overflow:auto}
+  ol.queue li{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
+  ol.queue li:last-child{border-bottom:0}
+  .no{width:18px;text-align:right;color:var(--muted);font-size:.78rem;font-variant-numeric:tabular-nums;flex:0 0 auto}
+  .qt{flex:1;min-width:0;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qb{font-size:.72rem;color:var(--muted);flex:0 0 auto}
+  .del{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:.74rem;padding:4px 9px;border-radius:6px}
+  .del:hover{background:#2a1a1c;border-color:var(--danger);color:#ff8b8e}
+  .empty{color:#5c5c6b;font-size:.85rem;padding:10px 4px}
+  .stats{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:.76rem;color:var(--muted);line-height:1.7}
+  .locked{max-width:520px;margin:12vh auto;text-align:center;color:var(--muted);line-height:1.9}
+  .locked code{background:#1e1e28;padding:2px 6px;border-radius:4px;color:var(--accent-2)}
+</style>
+</head>
+<body>
+
+{% if not unlocked %}
+  <div class="locked">
+    <h1 style="margin-bottom:14px">需要主机口令</h1>
+    <p>本实例启用了 <code>SONGUP_HOST_KEY</code>。</p>
+    <p>请在地址后加上 <code>?key=你的口令</code> 再打开。</p>
+  </div>
+{% else %}
+<header>
+  <h1>SongUp <span class="tag">v2 · HOST</span></h1>
+  <div class="meta" id="clock"></div>
+</header>
+
+<div class="layout">
+  <section>
+    <div class="stage-wrap"><div id="stage"><div class="idle">等待第一首歌…</div></div></div>
+
+    <div class="now">
+      <span class="dot" id="dot"></span>
+      <span class="title" id="nowTitle">—</span>
+      <span class="by" id="nowBy"></span>
+    </div>
+    <div class="banner" id="banner"></div>
+
+    <div class="controls">
+      <button id="btnNext">▶ 下一首 / 开始</button>
+      <button class="ghost" id="btnSkip">⏭ 跳过当前</button>
+      <button class="ghost" id="btnMute">🔇 静音</button>
+      <button class="danger" id="btnClear" style="margin-left:auto">清空队列</button>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <h2>队列 <span id="count" style="color:var(--accent-2)"></span></h2>
+    <ol class="queue" id="queue"><li class="empty" style="border:0">加载中…</li></ol>
+    <div class="stats" id="stats"></div>
+  </aside>
+</div>
+
+<script>
+const HOST_KEY = "{{ host_key }}";
+const stage = document.getElementById('stage');
+const banner = document.getElementById('banner');
+const nowTitle = document.getElementById('nowTitle');
+const nowBy = document.getElementById('nowBy');
+const dot = document.getElementById('dot');
+
+let lastSeq = null;        // 播放序号，变化才重建播放器
+let ytPlayer = null;       // YouTube IFrame API 实例
+let ytReady = false;       // API 是否加载成功
+let ytBroken = false;      // API 加载失败后不再重试
+let localMuted = false;
+let watchdog = null;       // 黑屏看门狗：N 秒还没出声就提示
+
+/* ---------- 请求 ---------- */
+
+async function api(path, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (HOST_KEY) headers['X-Host-Key'] = HOST_KEY;
+  const r = await fetch(path, Object.assign({}, opts, { headers }));
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = { ok: false, error: 'HTTP ' + r.status }; }
+  return data;
+}
+
+function advance() {
+  api('/api/next', { method: 'POST' }).then(render).catch(() => {});
+}
+
+/* ---------- 播放器 ---------- */
+
+function clearWatchdog() {
+  if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+}
+
+/** 挂载后 N 秒仍无画面/无声音时给出可见提示，避免「黑屏但没人知道为什么」。 */
+function armWatchdog(isPlaying, message, delay = 7000) {
+  clearWatchdog();
+  watchdog = setTimeout(() => {
+    try {
+      if (!isPlaying()) noteBanner(message);
+    } catch (e) { noteBanner(message); }
+  }, delay);
+}
+
+function teardown() {
+  clearWatchdog();
+  if (ytPlayer) {
+    try { ytPlayer.destroy(); } catch (e) { /* ignore */ }
+    ytPlayer = null;
+  }
+  const v = stage.querySelector('video');
+  if (v) {
+    v.pause();
+    v.removeAttribute('src');
+    try { v.load(); } catch (e) { /* ignore */ }
+  }
+  stage.replaceChildren();   // 彻底清空：这就是 v1 缺失的「销毁重建」
+}
+
+function showIdle(text) {
+  const d = document.createElement('div');
+  d.className = 'idle';
+  d.textContent = text;
+  stage.replaceChildren(d);
+}
+
+function noteBanner(text) {
+  if (!text) { banner.classList.remove('show'); banner.textContent = ''; return; }
+  banner.textContent = text;
+  banner.classList.add('show');
+}
+
+function buildLocal(song) {
+  if (!song.url) {
+    showIdle('这首歌缺少播放地址');
+    return;
+  }
+  const video = document.createElement('video');
+  video.src = song.url;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.controls = false;
+  video.muted = localMuted;
+  video.addEventListener('ended', advance);
+  video.addEventListener('playing', () => {
+    clearWatchdog();
+    if (localMuted) noteBanner('已静音 · 点击画面开启声音');
+    // 不静音时别动 banner：可能正显示「队列空了，在播兜底曲目」
+  });
+  video.addEventListener('error', () => {
+    clearWatchdog();
+    noteBanner('音频文件加载失败：' + song.url + '（检查 static 目录）');
+  });
+  video.addEventListener('click', () => {
+    video.muted = !video.muted;
+    localMuted = video.muted;
+    noteBanner(video.muted ? '已静音 · 再点画面恢复' : '');
+  });
+  stage.appendChild(video);
+
+  video.play().catch(() => {
+    // 自动播放被拦：静音后重试
+    video.muted = true;
+    localMuted = true;
+    video.play().then(() => {
+      noteBanner('浏览器拦了自动播放，已静音开始 · 点击画面开启声音');
+    }).catch(() => {
+      noteBanner('点一下画面开始播放（浏览器自动播放限制）');
+    });
+  });
+
+  armWatchdog(() => video.currentTime > 0.2, '本地文件没播起来（检查 static/' + song.id + '.mp4 是否存在）');
+}
+
+function ensureYouTubeApi() {
+  if (ytReady) return Promise.resolve(true);
+  if (ytBroken) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (ok) => { if (!settled) { settled = true; ytReady = ok; if (!ok) ytBroken = true; resolve(ok); } };
+
+    if (window.YT && window.YT.Player) return done(true);
+
+    if (!document.getElementById('yt-api')) {
+      const s = document.createElement('script');
+      s.id = 'yt-api';
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = () => done(false);
+      document.head.appendChild(s);
+    }
+    window.onYouTubeIframeAPIReady = () => done(true);
+    setTimeout(() => done(false), 7000);
+  });
+}
+
+async function buildYouTube(song) {
+  showIdle('正在加载 YouTube…');
+  const ok = await ensureYouTubeApi();
+
+  if (!ok) {
+    const f = document.createElement('iframe');
+    f.src = `https://www.youtube.com/embed/${encodeURIComponent(song.id)}?autoplay=1`;
+    f.allow = 'autoplay; encrypted-media; picture-in-picture';
+    f.allowFullscreen = true;
+    stage.replaceChildren(f);
+    noteBanner('连不上 YouTube（youtube.com 无法访问）· 建议优先用 B站或本地曲目，点「跳过当前」换一首');
+    return;
+  }
+
+  const holder = document.createElement('div');
+  holder.id = 'yt-' + Date.now();
+  stage.replaceChildren(holder);
+  noteBanner('');
+
+  ytPlayer = new YT.Player(holder.id, {
+    videoId: song.id,
+    playerVars: { autoplay: 1, rel: 0, playsinline: 1, origin: location.origin },
+    events: {
+      onReady: (e) => { try { e.target.playVideo(); } catch (err) {} },
+      onStateChange: (e) => {
+        if (e.data === YT.PlayerState.PLAYING) clearWatchdog();
+        if (e.data === YT.PlayerState.ENDED) advance();   // 播完自动下一首
+      },
+      onError: () => {
+        clearWatchdog();
+        noteBanner('这首 YouTube 视频无法播放（被限制嵌入或已下架），点「跳过当前」换一首');
+      }
+    }
+  });
+
+  armWatchdog(
+    () => ytPlayer && typeof ytPlayer.getPlayerState === 'function' && ytPlayer.getPlayerState() === 1,
+    '画面一直没起来：YouTube 可能被网络挡住，点「跳过当前」换一首',
+    9000
+  );
+}
+
+function buildBilibili(song) {
+  const f = document.createElement('iframe');
+  f.src = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(song.id)}&autoplay=1&high_quality=1&danmaku=0`;
+  f.allow = 'autoplay; fullscreen';
+  f.allowFullscreen = true;
+  f.setAttribute('scrolling', 'no');
+  stage.replaceChildren(f);
+  noteBanner('B站嵌入没有「播完」回调：这首结束请手动点「下一首」');
+  // B站 iframe 跨域，探不到内部状态，只能给静态提示；不设看门狗避免误报
+  clearWatchdog();
+}
+
+function mount(song) {
+  teardown();
+  noteBanner('');            // 换歌先清掉上一首的提示
+  if (!song) { showIdle('队列空了，等待点歌…'); return; }
+  if (song.kind === 'local') buildLocal(song);
+  else if (song.kind === 'bilibili') buildBilibili(song);
+  else buildYouTube(song);
+}
+
+/* ---------- 渲染 ---------- */
+
+function render(d) {
+  if (!d || d.error) { noteBanner(d && d.error ? d.error : '接口异常'); return; }
+
+  // 播放器：只在 seq 变化时重建（相同 id 连播两次也会重建）
+  if (d.seq !== lastSeq) {
+    lastSeq = d.seq;
+    mount(d.current);
+    if (d.current_source === 'fallback') noteBanner('队列空了，正在播兜底曲目');
+  }
+
+  // 当前曲目文字
+  if (d.current) {
+    nowTitle.textContent = d.current.title;
+    nowBy.textContent = 'by ' + d.current.added_by;
+    dot.classList.add('pulse');
+  } else {
+    nowTitle.textContent = '—';
+    nowBy.textContent = '';
+    dot.classList.remove('pulse');
+  }
+
+  // 队列列表：全部用 DOM API，绝不拼 HTML
+  const list = document.getElementById('queue');
+  list.replaceChildren();
+  if (!d.queue.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.style.border = '0';
+    li.textContent = '队列是空的';
+    list.appendChild(li);
+  } else {
+    d.queue.forEach((s, i) => {
+      const li = document.createElement('li');
+
+      const no = document.createElement('span');
+      no.className = 'no';
+      no.textContent = String(i + 1);
+
+      const t = document.createElement('span');
+      t.className = 'qt';
+      t.textContent = s.title;          // textContent：曲名里的 HTML 只会当字显示
+      t.title = s.title;
+
+      const b = document.createElement('span');
+      b.className = 'qb';
+      b.textContent = s.added_by;
+
+      const btn = document.createElement('button');
+      btn.className = 'del';
+      btn.textContent = '删除';
+      btn.addEventListener('click', () => {
+        api('/api/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: s.id })
+        }).then(render);
+      });
+
+      li.append(no, t, b, btn);
+      list.appendChild(li);
+    });
+  }
+
+  document.getElementById('count').textContent = d.queue.length ? `(${d.queue.length})` : '';
+
+  const users = Object.keys(d.user_counts || {}).length;
+  document.getElementById('stats').textContent =
+    `在场 ${users} 人 · 每人上限 ${d.max_per_user} 首 · 播放序号 #${d.seq}`;
+}
+
+async function refresh() {
+  const d = await api('/api/status');
+  render(d);
+}
+
+/* ---------- 交互 ---------- */
+
+document.getElementById('btnNext').addEventListener('click', advance);
+document.getElementById('btnSkip').addEventListener('click', advance);
+
+document.getElementById('btnMute').addEventListener('click', (e) => {
+  localMuted = !localMuted;
+  const v = stage.querySelector('video');
+  if (v) v.muted = localMuted;
+  e.target.textContent = localMuted ? '🔇 已静音' : '🔊 取消静音';
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (!confirm('确定清空整个队列？正在播放的也会停。')) return;
+  api('/api/clear', { method: 'POST' }).then(render);
+});
+
+// 空格 = 下一首
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    advance();
+  }
+});
+
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('zh-CN', { hour12: false });
+}, 1000);
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+{% endif %}
+</body>
+</html>
