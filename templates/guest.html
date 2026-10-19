@@ -2,88 +2,259 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SongUp v2 · 点歌</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#FBF5E9">
+<title>SongStub · 点歌</title>
+<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
 <style>
+  /* ---------------------------------------------------------------
+     SongStub guest page — paper. One ticket in your hand.
+
+     The whole visual language is a ticket stub: two punched notches, a
+     dashed tear line, a serial number. Nothing is decorative for its own
+     sake — the notches mark the split between "what plays" and "who asked",
+     and the serial is the queue position.
+     --------------------------------------------------------------- */
   :root{
-    --bg:#0d0d12; --card:#17171f; --line:#26262f; --text:#eceaf3;
-    --muted:#8b8b9c; --accent:#7c6cf0; --accent-2:#a78bfa;
-    --ok:#3ecf8e; --err:#ff6b6b;
+    --ink-900:#17110C; --ink-700:#3A2C1F; --ink-500:#6B5842;
+    --paper-100:#FBF5E9; --paper-200:#F6EEDF; --paper-300:#EADCC4;
+    --brass-100:#F7E3B8; --brass-500:#E0A33F; --brass-600:#B97B22;
+    --ember-600:#C24A2A; --olive-600:#6F7C3E;
+    --shadow:0 1px 2px rgba(58,44,31,.06), 0 8px 20px -12px rgba(58,44,31,.28);
+    --radius:14px;
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html{-webkit-text-size-adjust:100%}
   body{
-    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg);color:var(--text);min-height:100vh;padding:16px 14px 40px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:15px; line-height:1.5;
+    background:var(--paper-100); color:var(--ink-900);
+    min-height:100vh; padding:18px 16px calc(40px + env(safe-area-inset-bottom));
+    max-width:520px; margin:0 auto;
+    -webkit-font-smoothing:antialiased;
   }
-  header{display:flex;align-items:baseline;gap:9px;margin-bottom:4px}
-  h1{font-size:1.12rem;font-weight:650}
-  .tag{font-size:.66rem;padding:2px 6px;border-radius:5px;background:var(--accent);color:#fff}
-  .me{font-size:.74rem;color:var(--muted);margin-bottom:14px;font-variant-numeric:tabular-nums}
-  .me b{color:var(--accent-2);font-weight:600}
+  /* Subtle paper grain: two repeating gradients, no image request. */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(58,44,31,.018) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgba(58,44,31,.014) 0 1px, transparent 1px 3px);
+  }
+  body > *{position:relative; z-index:1}
 
-  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px;margin-bottom:12px}
-  .search{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:10px;
-          background:#101017;color:var(--text);font-size:.95rem;font-family:inherit}
-  .search:focus{outline:none;border-color:var(--accent)}
+  /* ---------- header ---------- */
+  header{display:flex; align-items:center; gap:10px; margin-bottom:2px}
+  .logo{width:30px; height:30px; flex:0 0 auto; color:var(--brass-600)}
+  .brand{display:flex; flex-direction:column; line-height:1.15}
+  .brand .name{
+    font-family:Georgia,"Times New Roman","Songti SC","Noto Serif SC",serif;
+    font-size:1.32rem; letter-spacing:.2px;
+  }
+  .brand .sub{font-size:.66rem; color:var(--ink-500); letter-spacing:.16em; text-transform:uppercase}
+  .room{margin-left:auto; font-size:.68rem; color:var(--ink-500);
+        border:1px solid var(--paper-300); border-radius:999px; padding:3px 9px; white-space:nowrap}
 
-  .results{margin-top:10px;display:flex;flex-direction:column}
-  .row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}
+  /* ---------- ticket holder (quota) ---------- */
+  .holder{
+    margin-top:16px; background:var(--paper-200); border:1px solid var(--paper-300);
+    border-radius:var(--radius); padding:13px 15px 14px; box-shadow:var(--shadow);
+  }
+  .holder .label{font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-500)}
+  .holder .slots{display:flex; align-items:center; gap:9px; margin-top:9px; flex-wrap:wrap}
+  .slot{
+    width:32px; height:32px; border-radius:8px; display:grid; place-items:center;
+    border:1.5px dashed #C9B393; color:#B39A74; background:#FBF3E3;
+    transition:background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .slot svg{width:16px; height:16px}
+  .slot.used{border-style:solid; border-color:var(--brass-500); background:var(--brass-100); color:var(--brass-600)}
+  .holder .note{margin-left:auto; font-size:.76rem; color:var(--ink-700); text-align:right; line-height:1.35}
+  .holder .note b{color:var(--brass-600); font-weight:600}
+  .holder .note .out{color:var(--ember-600); font-weight:600}
+  .holder .row2{display:flex; align-items:flex-end; gap:10px; margin-top:9px; flex-wrap:wrap}
+  .uid{font-size:.66rem; color:var(--ink-500); margin-top:8px; font-variant-numeric:tabular-nums}
+
+  /* ---------- card ---------- */
+  .card{
+    margin-top:12px; background:#fff; border:1px solid var(--paper-300);
+    border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;
+  }
+  .card-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:12px 15px 0;
+  }
+  .card-head h2{font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-500); font-weight:600}
+  .card-head .count{font-size:.72rem; color:var(--ink-500); font-variant-numeric:tabular-nums}
+  .card-body{padding:12px 15px 15px}
+
+  /* ---------- search ---------- */
+  .field{position:relative}
+  .field svg{
+    position:absolute; left:11px; top:50%; transform:translateY(-50%);
+    width:16px; height:16px; color:var(--ink-500); pointer-events:none;
+  }
+  .search{
+    width:100%; padding:11px 12px 11px 34px; font:inherit; font-size:.94rem;
+    color:var(--ink-900); background:var(--paper-100);
+    border:1px solid var(--paper-300); border-radius:10px;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .search::placeholder{color:#A89579}
+  .search:focus{outline:none; border-color:var(--brass-500); background:#fff}
+
+  .results{margin-top:6px; display:flex; flex-direction:column}
+  .row{
+    display:flex; align-items:center; gap:10px; padding:10px 1px;
+    border-bottom:1px solid var(--paper-300); animation:rise .22s ease both;
+  }
   .row:last-child{border-bottom:0}
-  .row .name{flex:1;min-width:0;font-size:.9rem;line-height:1.35;
-             overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .row .src{font-size:.62rem;color:var(--muted);border:1px solid var(--line);
-            padding:1px 5px;border-radius:4px;flex:0 0 auto;text-transform:uppercase;letter-spacing:.04em}
-  .add{flex:0 0 auto;background:var(--accent);color:#fff;border:0;border-radius:8px;
-       padding:8px 14px;font-size:.84rem;font-family:inherit;cursor:pointer}
-  .add:hover{filter:brightness(1.12)}
-  .add:disabled{background:#33333f;color:#7a7a8a;cursor:not-allowed}
+  .row .name{flex:1; min-width:0; font-size:.9rem; line-height:1.35;
+             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .row .src{
+    flex:0 0 auto; font-size:.6rem; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-500); border:1px solid var(--paper-300); border-radius:4px; padding:2px 5px;
+  }
+  .add{
+    flex:0 0 auto; font:inherit; font-size:.82rem; padding:7px 13px; cursor:pointer;
+    color:var(--ink-900); background:var(--brass-500); border:1px solid var(--brass-600);
+    border-radius:8px; transition:filter .15s ease, transform .08s ease;
+  }
+  .add:hover{filter:brightness(1.05)}
+  .add:active{transform:translateY(1px)}
+  .add:disabled{background:#EDE3D2; border-color:#DCCDB4; color:#A89579; cursor:not-allowed; filter:none}
+  .none{color:var(--ink-500); font-size:.84rem; padding:10px 1px}
 
-  .msg{margin-top:10px;font-size:.83rem;min-height:1.1em;line-height:1.4}
-  .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+  .msg{margin-top:8px; font-size:.82rem; min-height:1.15em; line-height:1.4}
+  .msg.ok{color:var(--olive-600)}
+  .msg.err{color:var(--ember-600)}
 
-  h2{font-size:.76rem;font-weight:600;color:var(--muted);letter-spacing:.06em;
-     text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between}
+  /* ---------- now playing ---------- */
+  .playing{
+    display:flex; align-items:center; gap:9px; padding:11px 12px; border-radius:10px;
+    background:var(--brass-100); border:1px solid #EBD09B;
+  }
+  .playing .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--brass-600); flex:0 0 auto;
+    animation:pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:.4;transform:scale(.85)}50%{opacity:1;transform:scale(1.2)}}
+  .playing .t{font-size:.87rem; font-weight:600; min-width:0;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .playing .m{font-size:.68rem; color:var(--ink-500); margin-left:auto; flex:0 0 auto}
 
-  .playing{display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:10px;
-           background:linear-gradient(90deg,#241b45,#1b1b28);border:1px solid #332a55;margin-bottom:12px}
-  .playing .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto;
-                animation:pulse 1.8s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
-  .playing .t{font-size:.88rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .playing .m{font-size:.7rem;color:var(--muted);margin-left:auto;flex:0 0 auto}
+  /* ---------- queue as a stack of stubs ---------- */
+  ol.q{list-style:none; display:flex; flex-direction:column; gap:7px}
+  ol.q li{
+    --notch:var(--paper-100);
+    position:relative; display:flex; align-items:center; gap:9px;
+    padding:10px 12px; font-size:.87rem;
+    background:var(--paper-200); border:1px solid var(--paper-300); border-radius:10px;
+    animation:rise .24s ease both;
+  }
+  /* Punched notches: circles filled with the page colour. */
+  ol.q li::before, ol.q li::after{
+    content:""; position:absolute; width:10px; height:10px; border-radius:50%;
+    background:var(--notch); border:1px solid var(--paper-300);
+  }
+  ol.q li::before{left:-6px; top:calc(50% - 5px); border-left-color:transparent}
+  ol.q li::after{right:-6px; top:calc(50% - 5px); border-right-color:transparent}
+  ol.q .no{
+    flex:0 0 auto; width:22px; height:22px; border-radius:6px;
+    display:grid; place-items:center; font-size:.7rem; font-weight:600;
+    font-variant-numeric:tabular-nums;
+    color:#7A4E10; background:var(--brass-100);
+  }
+  ol.q .t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  ol.q .b{flex:0 0 auto; font-size:.68rem; color:var(--ink-500)}
+  ol.q li.mine{border-color:var(--brass-500); background:#FDF3DC}
+  ol.q li.mine .b{color:var(--brass-600); font-weight:600}
+  ol.q li.mine .no{background:var(--brass-500); color:var(--ink-900)}
 
-  ol.q{list-style:none;display:flex;flex-direction:column}
-  ol.q li{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line);font-size:.87rem}
-  ol.q li:last-child{border-bottom:0}
-  ol.q .no{width:16px;color:var(--muted);font-size:.75rem;text-align:right;flex:0 0 auto}
-  ol.q .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  ol.q .b{font-size:.7rem;color:var(--muted);flex:0 0 auto}
-  ol.q li.mine .b{color:var(--accent-2)}
-  .none{color:#5c5c6b;font-size:.84rem;padding:8px 2px}
+  @keyframes rise{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:translateY(0)}}
+
+  .foot{margin-top:20px; font-size:.68rem; color:var(--ink-500); text-align:center; line-height:1.9}
+  /* Inline links get a real hit area: a 15px-tall line box fails WCAG 2.5.8. */
+  .foot a{color:var(--brass-600); text-decoration:underline; text-underline-offset:2px;
+          display:inline-block; padding:4px 2px}
+  .foot a:hover{color:#8A5713}
+
+  /* ---------- focus / motion / a11y ---------- */
+  :focus-visible{outline:2px solid var(--brass-600); outline-offset:2px; border-radius:6px}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important;
+                         transition-duration:.001ms !important}
+    .row, ol.q li{animation:none}
+    .playing .dot{animation:none; opacity:1}
+  }
+  @media (max-width:360px){
+    body{padding-left:12px; padding-right:12px}
+    .brand .name{font-size:1.2rem}
+    .row .src{display:none}
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>SongUp</h1><span class="tag">v2 · 点歌</span>
+  <svg class="logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M2.5 5.5h19a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-19a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6V7.5a2 2 0 0 1 2-2z"
+          stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M15 6.5v11" stroke="currentColor" stroke-width="1.2" stroke-dasharray="1.6 1.8"/>
+    <path d="M8.4 9.3v5.4l4.2-2.7z" fill="currentColor"/>
+  </svg>
+  <div class="brand">
+    <span class="name">SongStub</span>
+    <span class="sub">曲票 · 点歌</span>
+  </div>
+  <span class="room" id="roomLabel">点歌台</span>
 </header>
-<div class="me" id="me">识别中…</div>
 
-<div class="card">
-  <input class="search" id="search" placeholder="搜索曲库…（直接点添加就行）" autocomplete="off">
-  <div class="results" id="results"></div>
-  <div class="msg" id="msg"></div>
-</div>
+<!-- Quota as a physical ticket holder: one slot per song you may still claim. -->
+<section class="holder" aria-labelledby="holderLabel">
+  <div class="label" id="holderLabel">你的票夹</div>
+  <div class="row2">
+    <div class="slots" id="slots" role="img" aria-label="剩余点歌名额"></div>
+    <div class="note" id="me">识别中…</div>
+  </div>
+  <div class="uid" id="uid"></div>
+</section>
 
-<div class="card">
-  <h2><span>正在播放</span></h2>
-  <div id="playing"></div>
-</div>
+<section class="card">
+  <div class="card-head"><h2>曲库</h2><span class="count" id="libCount"></span></div>
+  <div class="card-body">
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.2" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M15.2 15.2 20 20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <input class="search" id="search" type="search" placeholder="搜歌名或 ID…"
+             autocomplete="off" aria-label="搜索曲库">
+    </div>
+    <div class="results" id="results"></div>
+    <div class="msg" id="msg" role="status" aria-live="polite"></div>
+  </div>
+</section>
 
-<div class="card">
-  <h2><span>排队中</span><span id="count"></span></h2>
-  <ol class="q" id="queue"></ol>
-</div>
+<section class="card">
+  <div class="card-head"><h2>正在播放</h2></div>
+  <div class="card-body" id="playing"></div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>排队中</h2>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="card-body">
+    <ol class="q" id="queue"></ol>
+    <div class="msg" id="waitHint" style="margin-top:10px"></div>
+  </div>
+</section>
+
+<p class="foot">
+  公平去重 · 每人上限由主机设定 · 播完自动释放名额<br>
+  SongStub · MIT · 派生自 <a href="https://github.com/motz0815/songup" rel="noopener">motz0815/songup</a>
+</p>
 
 <script>
 let myId = null;
@@ -92,15 +263,53 @@ let myCount = 0;
 let quotaLeft = 2;
 let latestStatus = null;
 
-/* 配额用完后，列表里的「添加」按钮统一置灰 */
+/* ---------- quota ---------- */
+
+function slotIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  const body = document.createElementNS(NS, 'path');
+  body.setAttribute('d', 'M4 6.5h16v11H4z');
+  body.setAttribute('stroke', 'currentColor');
+  body.setAttribute('stroke-width', '1.6');
+  body.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(body);
+  const tear = document.createElementNS(NS, 'path');
+  tear.setAttribute('d', 'M14.5 6.5v11');
+  tear.setAttribute('stroke', 'currentColor');
+  tear.setAttribute('stroke-width', '1.3');
+  tear.setAttribute('stroke-dasharray', '1.6 1.8');
+  svg.appendChild(tear);
+  return svg;
+}
+
+/* Slots are redrawn on every quota change. A solid slot means one of your
+   tickets is in the hat; a dashed one is still yours to spend. The old
+   one-line counter could not show "how many, out of how many". */
+function renderSlots() {
+  const box = document.getElementById('slots');
+  const spent = Math.min(maxPerUser, myCount);
+  box.replaceChildren();
+  for (let i = 0; i < maxPerUser; i += 1) {
+    const slot = document.createElement('span');
+    slot.className = 'slot' + (i < spent ? ' used' : '');
+    slot.appendChild(slotIcon());
+    box.appendChild(slot);
+  }
+  box.setAttribute('aria-label',
+    '每人上限 ' + maxPerUser + ' 首，已用 ' + spent + ' 个名额，还剩 ' + Math.max(0, maxPerUser - spent) + ' 个');
+}
+
 function applyQuotaToButtons() {
   document.querySelectorAll('.add').forEach((b) => {
     b.disabled = quotaLeft <= 0;
-    b.title = quotaLeft <= 0 ? '你的名额用完了，等一首播完再点' : '';
+    b.title = quotaLeft <= 0 ? '名额用完了，等一首播完再点' : '';
   });
 }
 
-/* ---------- 请求 ---------- */
+/* ---------- requests ---------- */
 
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
@@ -114,7 +323,7 @@ function say(text, kind) {
   if (text) setTimeout(() => { if (el.textContent === text) { el.textContent = ''; el.className = 'msg'; } }, 3200);
 }
 
-/* ---------- 渲染 ---------- */
+/* ---------- rendering ---------- */
 
 function renderPlaying(d) {
   const box = document.getElementById('playing');
@@ -128,14 +337,13 @@ function renderPlaying(d) {
   }
   const wrap = document.createElement('div');
   wrap.className = 'playing';
-  wrap.style.marginBottom = '0';
 
   const dot = document.createElement('span');
   dot.className = 'dot';
 
   const t = document.createElement('span');
   t.className = 't';
-  t.textContent = d.current.title;      // textContent，曲名不可当 HTML
+  t.textContent = d.current.title;      // textContent: titles are user input
 
   const m = document.createElement('span');
   m.className = 'm';
@@ -145,13 +353,22 @@ function renderPlaying(d) {
   box.appendChild(wrap);
 }
 
+/* Rebuilding the list on every 2.5s poll restarts the entry animation each
+   time, so the queue visibly flickers (and a screenshot can catch it fully
+   transparent). Rebuild only when the contents actually changed. */
+let queueSig = null;
+
 function renderQueue(d) {
+  const sig = d.queue.map((s) => s.id + '\u0000' + s.title + '\u0000' + s.added_by).join('\u0001');
+  if (sig === queueSig) return;
+  queueSig = sig;
+
   const list = document.getElementById('queue');
   list.replaceChildren();
   if (!d.queue.length) {
     const li = document.createElement('li');
     li.className = 'none';
-    li.style.border = '0';
+    li.style.cssText = 'border:0;background:transparent;animation:none;padding-left:2px';
     li.textContent = '队列是空的，你可以第一个点歌';
     list.appendChild(li);
   } else {
@@ -166,6 +383,7 @@ function renderQueue(d) {
       const t = document.createElement('span');
       t.className = 't';
       t.textContent = s.title;
+      t.title = s.title;
 
       const b = document.createElement('span');
       b.className = 'b';
@@ -175,7 +393,22 @@ function renderQueue(d) {
       list.appendChild(li);
     });
   }
-  document.getElementById('count').textContent = d.queue.length ? d.queue.length + ' 首' : '';
+  document.getElementById('count').textContent =
+    d.queue.length ? d.queue.length + ' 首' : '';
+}
+
+/* How long until my turn: position of the first stub that is mine. */
+function renderWaitHint(d) {
+  const el = document.getElementById('waitHint');
+  if (!d.queue.length) { el.textContent = ''; el.className = 'msg'; return; }
+  const idx = d.queue.findIndex((s) => s.added_by === myId);
+  if (idx < 0) {
+    el.textContent = '队列里没有你的票 · 点上面的「添加」递一张';
+    el.className = 'msg';
+    return;
+  }
+  el.textContent = idx === 0 ? '下一首就是你的' : '还要等 ' + idx + ' 首轮到你';
+  el.className = 'msg ok';
 }
 
 function renderQuota(d) {
@@ -183,15 +416,25 @@ function renderQuota(d) {
   quotaLeft = Math.max(0, maxPerUser - myCount);
   const el = document.getElementById('me');
   el.replaceChildren();
-  const b = document.createElement('b');
-  b.textContent = quotaLeft > 0 ? `还能点 ${quotaLeft} 首` : '你的名额用完了';
-  el.append(document.createTextNode(`你是 ${myId} · 每人上限 ${maxPerUser} 首 · `), b);
+  if (quotaLeft > 0) {
+    el.append(document.createTextNode('还能点 '));
+    const b = document.createElement('b');
+    b.textContent = String(quotaLeft);
+    el.append(b, document.createTextNode(' 首'));
+  } else {
+    const b = document.createElement('b');
+    b.className = 'out';
+    b.textContent = '名额用完了';
+    el.append(b);
+  }
+  renderSlots();
   applyQuotaToButtons();
 }
 
 function renderResults(songs) {
   const box = document.getElementById('results');
   box.replaceChildren();
+  document.getElementById('libCount').textContent = songs.length ? songs.length + ' 首可选' : '';
   if (!songs.length) {
     const p = document.createElement('div');
     p.className = 'none';
@@ -200,7 +443,8 @@ function renderResults(songs) {
     return;
   }
 
-  // 没输关键词时只列前几首，别让手机上滚一屏全是候选
+  // Without a keyword only the first few are listed; a phone screen should not
+  // be a wall of candidates before the user has said what they want.
   const typed = document.getElementById('search').value.trim();
   const limit = typed ? songs.length : 6;
   songs.slice(0, limit).forEach((s) => {
@@ -209,7 +453,7 @@ function renderResults(songs) {
 
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = s.title;          // 依然 textContent
+    name.textContent = s.title;          // still textContent
 
     const src = document.createElement('span');
     src.className = 'src';
@@ -217,6 +461,7 @@ function renderResults(songs) {
 
     const btn = document.createElement('button');
     btn.className = 'add';
+    btn.type = 'button';
     btn.textContent = '添加';
     btn.addEventListener('click', () => addSong(s, btn));
 
@@ -227,13 +472,13 @@ function renderResults(songs) {
   if (songs.length > limit) {
     const more = document.createElement('div');
     more.className = 'none';
-    more.textContent = `还有 ${songs.length - limit} 首，输入关键词搜索`;
+    more.textContent = '还有 ' + (songs.length - limit) + ' 首，输入关键词搜索';
     box.appendChild(more);
   }
   applyQuotaToButtons();
 }
 
-/* ---------- 行为 ---------- */
+/* ---------- behaviour ---------- */
 
 async function addSong(song, btn) {
   btn.disabled = true;
@@ -256,7 +501,7 @@ async function addSong(song, btn) {
 let searchTimer = null;
 function onSearchInput() {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(doSearch, 180);   // 防抖：别每敲一个字就打一次接口
+  searchTimer = setTimeout(doSearch, 180);   // debounce: one request per pause
 }
 
 async function doSearch() {
@@ -271,6 +516,7 @@ async function refresh() {
   latestStatus = d;
   renderPlaying(d);
   renderQueue(d);
+  renderWaitHint(d);
   if (myId) renderQuota(d);
 }
 
@@ -278,6 +524,7 @@ async function init() {
   const me = await api('/api/me');
   myId = me.user_id;
   maxPerUser = me.max_per_user || 2;
+  document.getElementById('uid').textContent = '票号 ' + myId.replace('guest_', '#');
   await doSearch();
   await refresh();
   setInterval(refresh, 2500);

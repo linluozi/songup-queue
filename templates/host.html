@@ -3,125 +3,384 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SongUp v2 · Host</title>
+<meta name="theme-color" content="#14100D">
+<title>SongStub · 主机</title>
+<link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
 <style>
+  /* ---------------------------------------------------------------
+     SongStub host page — stage. The room is dark; this screen is the light.
+
+     Everything here is sized for reading at 2-4 metres: the title is 28px,
+     the ticket is the largest object on screen, and the control row is one
+     thumb-height tall. The QR card exists because nobody types an IP address
+     while holding a drink.
+     --------------------------------------------------------------- */
   :root{
-    --bg:#0d0d12; --card:#17171f; --line:#26262f; --text:#eceaf3;
-    --muted:#8b8b9c; --accent:#7c6cf0; --accent-2:#a78bfa; --danger:#e5484d;
+    --ink-900:#17110C; --paper-100:#FBF5E9; --paper-200:#F6EEDF; --paper-300:#EADCC4;
+    --brass-100:#F7E3B8; --brass-500:#E0A33F; --brass-600:#B97B22;
+    --ember-600:#C24A2A; --olive-500:#8C9A56;
+    --stage-900:#14100D; --stage-800:#1D1712; --stage-700:#2A211A; --stage-600:#3A2E24;
+    --stage-muted:#A3917B; --stage-dim:#8A7862;
+    --radius:16px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
-    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg); color:var(--text); min-height:100vh; padding:18px 20px 40px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:15px; line-height:1.5;
+    background:var(--stage-900); color:var(--paper-100);
+    min-height:100vh; padding:20px 24px 36px;
+    -webkit-font-smoothing:antialiased;
   }
-  header{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-  h1{font-size:1.25rem;font-weight:650;letter-spacing:.01em}
-  .tag{font-size:.7rem;padding:2px 7px;border-radius:5px;background:var(--accent);color:#fff;letter-spacing:.04em}
-  .meta{margin-left:auto;font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  /* Warm vignette: the room lights, not a gradient for its own sake. */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(120% 70% at 30% 0%, rgba(224,163,63,.10), transparent 62%),
+      radial-gradient(90% 60% at 100% 100%, rgba(194,74,42,.07), transparent 60%);
+  }
+  body > *{position:relative; z-index:1}
 
-  .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
-  @media (max-width:980px){.layout{grid-template-columns:1fr}}
+  /* ---------- header ---------- */
+  header{display:flex; align-items:center; gap:11px; margin-bottom:18px; flex-wrap:wrap}
+  .logo{width:34px; height:34px; flex:0 0 auto; color:var(--brass-500)}
+  .brand{display:flex; flex-direction:column; line-height:1.15}
+  .brand .name{font-family:Georgia,"Times New Roman","Songti SC",serif; font-size:1.4rem}
+  .brand .sub{font-size:.64rem; letter-spacing:.2em; text-transform:uppercase; color:var(--brass-500)}
+  .host-tag{
+    font-size:.62rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--stage-900); background:var(--brass-500);
+    padding:3px 8px; border-radius:5px; font-weight:700;
+  }
+  .meta{margin-left:auto; display:flex; align-items:center; gap:14px; font-size:.78rem; color:var(--stage-muted)}
+  .meta .clock{font-variant-numeric:tabular-nums; font-size:.9rem; color:var(--paper-100)}
+  .live{display:inline-flex; align-items:center; gap:6px}
+  .live i{width:6px; height:6px; border-radius:50%; background:var(--olive-500);
+          box-shadow:0 0 0 3px rgba(140,154,86,.16)}
+  .live.off i{background:var(--ember-600); box-shadow:0 0 0 3px rgba(194,74,42,.16)}
 
-  .stage-wrap{background:#000;border-radius:14px;overflow:hidden;position:relative;
-              aspect-ratio:16/9;max-height:64vh;margin:0 auto;border:1px solid var(--line)}
-  #stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
-  #stage video,#stage iframe{width:100%;height:100%;border:0;display:block;background:#000}
-  #stage .idle{color:#5c5c6b;font-size:.95rem;text-align:center;line-height:1.7;padding:24px}
+  .layout{display:grid; grid-template-columns:minmax(0,1fr) 372px; gap:22px; align-items:start}
+  /* minmax(0,1fr), not 1fr: a bare fr track keeps its min-content floor, and the
+     stage's 16:9 box then forces the whole column wider than a phone screen. */
+  @media (max-width:1040px){ .layout{grid-template-columns:minmax(0,1fr)} }
 
-  .now{display:flex;align-items:center;gap:10px;margin-top:14px;min-height:26px}
-  .now .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-2);flex:0 0 auto}
-  .now .dot.pulse{animation:pulse 1.8s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
-  .now .title{font-size:1.02rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .now .by{font-size:.78rem;color:var(--muted);flex:0 0 auto}
-  .banner{margin-top:8px;font-size:.78rem;color:#f0c674;background:#2a2318;border:1px solid #4a3d22;
-          padding:6px 10px;border-radius:7px;display:none}
+  /* ---------- stage ---------- */
+  .stage-wrap{
+    position:relative; background:#000; border-radius:var(--radius); overflow:hidden;
+    aspect-ratio:16/9; max-height:60vh; margin:0 auto;
+    border:1px solid var(--stage-600);
+    box-shadow:0 24px 60px -30px rgba(0,0,0,.9), 0 0 0 1px rgba(224,163,63,.06);
+  }
+  #stage{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:#000}
+  #stage video,#stage iframe{width:100%; height:100%; border:0; display:block; background:#000}
+  #stage .idle{
+    color:var(--stage-dim); font-size:.95rem; text-align:center; line-height:1.9; padding:24px;
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+  }
+  #stage .idle svg{width:46px; height:46px; opacity:.5}
+
+  /* Progress only for local media — the iframe sources do not expose it. */
+  .progress{
+    position:absolute; left:0; right:0; bottom:0; height:3px;
+    background:rgba(255,255,255,.10); opacity:0; transition:opacity .2s ease;
+  }
+  .progress.on{opacity:1}
+  .progress i{display:block; height:100%; width:0; background:var(--brass-500); transition:width .22s linear}
+
+  /* ---------- the torn ticket (now playing) ---------- */
+  .stub{
+    --notch:var(--stage-900);
+    position:relative; margin-top:16px; padding:16px 18px;
+    background:var(--paper-100); color:var(--ink-900);
+    border-radius:12px; box-shadow:0 14px 30px -22px rgba(0,0,0,.9);
+    transform:rotate(-.5deg);
+    display:flex; align-items:center; gap:16px;
+    transition:transform .25s ease;
+  }
+  .stub::before, .stub::after{
+    content:""; position:absolute; width:16px; height:16px; border-radius:50%;
+    background:var(--notch); top:calc(50% - 8px);
+  }
+  .stub::before{left:-8px}
+  .stub::after{right:-8px}
+  .stub .play-mark{
+    flex:0 0 auto; width:42px; height:42px; border-radius:50%;
+    display:grid; place-items:center; background:var(--brass-500); color:var(--ink-900);
+  }
+  .stub .play-mark svg{width:17px; height:17px}
+  .stub .txt{min-width:0; flex:1}
+  .stub .title{
+    font-family:Georgia,"Times New Roman","Songti SC",serif;
+    font-size:1.32rem; line-height:1.25; letter-spacing:.1px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .stub .by{font-size:.76rem; color:#6B5842; margin-top:2px; font-variant-numeric:tabular-nums}
+  .stub .tear{
+    flex:0 0 auto; align-self:stretch; width:1px; margin:0 2px;
+    background-image:linear-gradient(to bottom, var(--paper-300) 45%, transparent 45%);
+    background-size:1px 7px;
+  }
+  .stub .serial{
+    flex:0 0 auto; text-align:right; font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;
+    font-size:.68rem; color:#6B5842; line-height:1.6;
+  }
+  .stub .serial b{display:block; font-size:1.05rem; color:var(--brass-600); letter-spacing:.02em}
+  .stub.idle{transform:none; background:transparent; border:1px dashed var(--stage-600); box-shadow:none}
+  .stub.idle .title{color:var(--stage-muted); font-size:1rem; font-family:inherit}
+  .stub.idle .play-mark{background:transparent; border:1px solid var(--stage-600); color:var(--stage-dim)}
+  .stub.idle .by{color:var(--stage-muted)}
+  .stub.idle .serial{color:var(--stage-muted)}
+
+  .banner{
+    margin-top:10px; font-size:.8rem; color:#EBC98B;
+    background:rgba(224,163,63,.10); border:1px solid rgba(224,163,63,.28);
+    padding:8px 12px; border-radius:9px; display:none; line-height:1.5;
+  }
   .banner.show{display:block}
+  .banner.warn{color:#F0A08C; background:rgba(194,74,42,.10); border-color:rgba(194,74,42,.30)}
 
-  .controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  /* ---------- controls ---------- */
+  .controls{display:flex; gap:9px; margin-top:14px; flex-wrap:wrap; align-items:center}
   button{
-    font:inherit;font-size:.86rem;padding:9px 16px;border-radius:9px;border:1px solid transparent;
-    background:var(--accent);color:#fff;cursor:pointer;transition:filter .15s,background .15s;
+    font:inherit; font-size:.86rem; padding:10px 17px; border-radius:10px; cursor:pointer;
+    border:1px solid transparent; background:var(--brass-500); color:var(--ink-900);
+    font-weight:600; display:inline-flex; align-items:center; gap:7px;
+    transition:filter .15s ease, transform .08s ease, background .15s ease, border-color .15s ease;
   }
-  button:hover{filter:brightness(1.12)}
+  button svg{width:14px; height:14px}
+  button:hover{filter:brightness(1.06)}
   button:active{transform:translateY(1px)}
-  button.ghost{background:transparent;border-color:var(--line);color:var(--text)}
-  button.ghost:hover{background:#1e1e28}
-  button.danger{background:var(--danger)}
-  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:transparent; border-color:var(--stage-600); color:var(--paper-100); font-weight:500}
+  button.ghost:hover{background:var(--stage-800); border-color:var(--stage-muted)}
+  button.danger{background:transparent; border-color:rgba(194,74,42,.5); color:#E8917A; font-weight:500; margin-left:auto}
+  button.danger:hover{background:rgba(194,74,42,.12); border-color:var(--ember-600)}
+  button:disabled{opacity:.4; cursor:not-allowed; filter:none}
+  .hint{margin-top:11px; font-size:.72rem; color:var(--stage-muted); letter-spacing:.02em}
+  kbd{
+    font-family:ui-monospace,Menlo,monospace; font-size:.68rem;
+    border:1px solid var(--stage-600); border-bottom-width:2px; border-radius:4px;
+    padding:1px 5px; color:var(--stage-muted); background:var(--stage-800);
+  }
 
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
-  .panel h2{font-size:.82rem;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
-  ol.queue{list-style:none;display:flex;flex-direction:column;gap:2px;max-height:52vh;overflow:auto}
-  ol.queue li{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line)}
-  ol.queue li:last-child{border-bottom:0}
-  .no{width:18px;text-align:right;color:var(--muted);font-size:.78rem;font-variant-numeric:tabular-nums;flex:0 0 auto}
-  .qt{flex:1;min-width:0;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .qb{font-size:.72rem;color:var(--muted);flex:0 0 auto}
-  .del{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:.74rem;padding:4px 9px;border-radius:6px}
-  .del:hover{background:#2a1a1c;border-color:var(--danger);color:#ff8b8e}
-  .empty{color:#5c5c6b;font-size:.85rem;padding:10px 4px}
-  .stats{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:.76rem;color:var(--muted);line-height:1.7}
-  .locked{max-width:520px;margin:12vh auto;text-align:center;color:var(--muted);line-height:1.9}
-  .locked code{background:#1e1e28;padding:2px 6px;border-radius:4px;color:var(--accent-2)}
+  /* ---------- side panel ---------- */
+  .panel{
+    background:var(--stage-800); border:1px solid var(--stage-700);
+    border-radius:var(--radius); padding:16px;
+  }
+  .panel + .panel{margin-top:14px}
+  .panel h2{
+    font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; font-weight:600;
+    color:var(--stage-muted); display:flex; align-items:baseline; gap:8px; margin-bottom:12px;
+  }
+  .panel h2 .count{color:var(--brass-500); font-variant-numeric:tabular-nums; letter-spacing:0}
+
+  ol.queue{list-style:none; display:flex; flex-direction:column; gap:6px; max-height:46vh; overflow:auto}
+  ol.queue li{
+    --notch:var(--stage-800);
+    position:relative; display:flex; align-items:center; gap:10px;
+    padding:9px 11px; border-radius:9px;
+    background:var(--stage-700); border:1px solid var(--stage-600);
+    animation:slide .22s ease both;
+  }
+  ol.queue li::before, ol.queue li::after{
+    content:""; position:absolute; width:9px; height:9px; border-radius:50%;
+    background:var(--notch); top:calc(50% - 4.5px);
+  }
+  ol.queue li::before{left:-5px}
+  ol.queue li::after{right:-5px}
+  @keyframes slide{from{opacity:0; transform:translateY(-4px)}to{opacity:1; transform:translateY(0)}}
+  .no{
+    flex:0 0 auto; width:21px; height:21px; border-radius:6px; display:grid; place-items:center;
+    font-size:.68rem; font-weight:700; font-variant-numeric:tabular-nums;
+    color:var(--brass-500); background:rgba(224,163,63,.13);
+  }
+  .qt{flex:1; min-width:0; font-size:.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .qb{flex:0 0 auto; font-size:.66rem; color:var(--stage-muted); font-variant-numeric:tabular-nums}
+  .del{
+    flex:0 0 auto; font:inherit; font-size:.68rem; padding:3px 8px; border-radius:6px;
+    background:transparent; border:1px solid var(--stage-600); color:var(--stage-muted);
+    font-weight:500; cursor:pointer;
+  }
+  .del:hover{background:rgba(194,74,42,.14); border-color:var(--ember-600); color:#E8917A}
+  .empty{color:var(--stage-dim); font-size:.84rem; padding:12px 2px; line-height:1.7}
+
+  .stats{
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--stage-700);
+    font-size:.72rem; color:var(--stage-muted); line-height:1.8;
+    display:grid; grid-template-columns:1fr 1fr; gap:2px 10px;
+  }
+  .stats span b{color:var(--paper-100); font-weight:600; font-variant-numeric:tabular-nums}
+
+  /* ---------- join card ---------- */
+  .join{display:flex; gap:14px; align-items:center}
+  .join .code{
+    flex:0 0 auto; width:104px; height:104px; padding:6px; background:var(--paper-100);
+    border-radius:9px; display:grid; place-items:center;
+  }
+  .join .code svg{width:100%; height:100%; display:block}
+  .join .info{min-width:0; flex:1}
+  .join .label{font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--stage-muted)}
+  .join .addr{
+    font-family:ui-monospace,"Cascadia Mono",Menlo,monospace;
+    font-size:.82rem; color:var(--paper-100); margin-top:5px;
+    word-break:break-all; line-height:1.45; letter-spacing:-.01em;
+  }
+  .join .tip{font-size:.7rem; color:var(--stage-muted); margin-top:6px; line-height:1.5}
+  .copy{
+    margin-top:8px; font:inherit; font-size:.72rem; padding:5px 10px; border-radius:7px;
+    background:transparent; border:1px solid var(--stage-600); color:var(--paper-100); font-weight:500;
+  }
+  .copy:hover{background:var(--stage-700); border-color:var(--brass-500); color:var(--brass-500)}
+  .copy.done{border-color:var(--olive-500); color:var(--olive-500)}
+
+  /* ---------- locked ---------- */
+  .locked{max-width:520px; margin:14vh auto; text-align:center; color:var(--stage-muted); line-height:1.95}
+  .locked h1{font-family:Georgia,serif; font-size:1.6rem; color:var(--paper-100); margin-bottom:14px}
+  .locked code{background:var(--stage-800); padding:2px 7px; border-radius:5px; color:var(--brass-500)}
+
+  :focus-visible{outline:2px solid var(--brass-500); outline-offset:2px; border-radius:8px}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms !important; transition-duration:.001ms !important}
+    .stub{transform:none}
+  }
+  @media (max-width:600px){
+    body{padding:14px 14px 28px}
+    .meta .live{display:none}
+    .stub{flex-wrap:wrap}
+    .stub .tear, .stub .serial{display:none}
+  }
 </style>
 </head>
 <body>
 
 {% if not unlocked %}
   <div class="locked">
-    <h1 style="margin-bottom:14px">需要主机口令</h1>
+    <h1>需要主机口令</h1>
     <p>本实例启用了 <code>SONGUP_HOST_KEY</code>。</p>
     <p>请在地址后加上 <code>?key=你的口令</code> 再打开。</p>
   </div>
 {% else %}
 <header>
-  <h1>SongUp <span class="tag">v2 · HOST</span></h1>
-  <div class="meta" id="clock"></div>
+  <svg class="logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M2.5 5.5h19a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-19a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6V7.5a2 2 0 0 1 2-2z"
+          stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M15 6.5v11" stroke="currentColor" stroke-width="1.2" stroke-dasharray="1.6 1.8"/>
+    <path d="M8.4 9.3v5.4l4.2-2.7z" fill="currentColor"/>
+  </svg>
+  <div class="brand">
+    <span class="name">SongStub</span>
+    <span class="sub">曲票 · 主机</span>
+  </div>
+  <span class="host-tag">HOST</span>
+  <div class="meta">
+    <span class="live" id="liveDot"><i></i><span id="liveText">已连接</span></span>
+    <span class="clock" id="clock"></span>
+  </div>
 </header>
 
 <div class="layout">
   <section>
-    <div class="stage-wrap"><div id="stage"><div class="idle">等待第一首歌…</div></div></div>
-
-    <div class="now">
-      <span class="dot" id="dot"></span>
-      <span class="title" id="nowTitle">—</span>
-      <span class="by" id="nowBy"></span>
+    <div class="stage-wrap">
+      <div id="stage">
+        <div class="idle">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 17V7A1.5 1.5 0 0 1 4 5.5z"
+                  stroke="currentColor" stroke-width="1.4"/>
+            <path d="M10 9.4v5.2l4.4-2.6z" fill="currentColor"/>
+          </svg>
+          <span>等待第一首歌</span>
+        </div>
+      </div>
+      <div class="progress" id="progress"><i id="progressBar"></i></div>
     </div>
-    <div class="banner" id="banner"></div>
+
+    <div class="stub" id="nowStub">
+      <span class="play-mark">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+      </span>
+      <div class="txt">
+        <div class="title" id="nowTitle">—</div>
+        <div class="by" id="nowBy">队列为空</div>
+      </div>
+      <div class="tear" aria-hidden="true"></div>
+      <div class="serial">
+        <span>剩余</span>
+        <b id="nowEta">—</b>
+      </div>
+    </div>
+
+    <div class="banner" id="banner" role="status" aria-live="polite"></div>
 
     <div class="controls">
-      <button id="btnNext">▶ 下一首 / 开始</button>
-      <button class="ghost" id="btnSkip">⏭ 跳过当前</button>
-      <button class="ghost" id="btnMute">🔇 静音</button>
-      <button class="danger" id="btnClear" style="margin-left:auto">清空队列</button>
+      <button id="btnNext" type="button">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+        下一首
+      </button>
+      <button class="ghost" id="btnSkip" type="button">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 5.5h2.4v13H5zM19 5.5v13l-9.4-6.5z"/></svg>
+        跳过
+      </button>
+      <button class="ghost" id="btnMute" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 9.5h3.5L12 5.8v12.4L7.5 14.5H4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M16 9.2a4 4 0 0 1 0 5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        静音
+      </button>
+      <button class="danger" id="btnClear" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 7h14M9.5 7V5.4h5V7M7 7l.8 11.2h8.4L17 7" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        清空队列
+      </button>
     </div>
+    <div class="hint"><kbd>空格</kbd> 下一首 · <kbd>M</kbd> 静音 · <kbd>C</kbd> 清空（会二次确认）</div>
   </section>
 
-  <aside class="panel">
-    <h2>队列 <span id="count" style="color:var(--accent-2)"></span></h2>
-    <ol class="queue" id="queue"><li class="empty" style="border:0">加载中…</li></ol>
-    <div class="stats" id="stats"></div>
+  <aside>
+    <div class="panel">
+      <h2>待播票 <span class="count" id="count"></span></h2>
+      <ol class="queue" id="queue"><li class="empty" style="border:0;background:transparent">加载中…</li></ol>
+      <div class="stats" id="stats"></div>
+    </div>
+
+    <div class="panel">
+      <h2>扫码入场</h2>
+      <div class="join">
+        <div class="code" id="qrBox">{{ join_qr|safe }}</div>
+        <div class="info">
+          <div class="label">手机扫码 · 同一 Wi-Fi</div>
+          <div class="addr" id="joinAddr">{{ join_url }}</div>
+          <div class="tip">投屏时客人扫这个码就能点歌，不用手打地址。</div>
+          <button class="copy" id="btnCopy" type="button">复制地址</button>
+        </div>
+      </div>
+    </div>
   </aside>
 </div>
 
 <script>
-const HOST_KEY = "{{ host_key }}";
+const HOST_KEY = {{ host_key|tojson }};
 const stage = document.getElementById('stage');
 const banner = document.getElementById('banner');
 const nowTitle = document.getElementById('nowTitle');
 const nowBy = document.getElementById('nowBy');
-const dot = document.getElementById('dot');
+const nowStub = document.getElementById('nowStub');
+const nowEta = document.getElementById('nowEta');
+const progress = document.getElementById('progress');
+const progressBar = document.getElementById('progressBar');
+const muteBtn = document.getElementById('btnMute');
 
-let lastSeq = null;        // 播放序号，变化才重建播放器
-let ytPlayer = null;       // YouTube IFrame API 实例
-let ytReady = false;       // API 是否加载成功
-let ytBroken = false;      // API 加载失败后不再重试
+let lastSeq = null;        // playback serial: rebuild the player only when it changes
+let ytPlayer = null;
+let ytReady = false;
+let ytBroken = false;
 let localMuted = false;
-let watchdog = null;       // 黑屏看门狗：N 秒还没出声就提示
+let watchdog = null;       // black-screen watchdog
+let ticker = null;         // progress / remaining-time ticker
+let generation = 0;        // bumped on every teardown; stale players must not act
 
-/* ---------- 请求 ---------- */
+/* ---------- requests ---------- */
 
 async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
@@ -136,24 +395,39 @@ function advance() {
   api('/api/next', { method: 'POST' }).then(render).catch(() => {});
 }
 
-/* ---------- 播放器 ---------- */
+/* ---------- connectivity ---------- */
+
+function setLive(on) {
+  document.getElementById('liveDot').classList.toggle('off', !on);
+  document.getElementById('liveText').textContent = on ? '已连接' : '重连中…';
+}
+
+/* ---------- stage ---------- */
 
 function clearWatchdog() {
   if (watchdog) { clearTimeout(watchdog); watchdog = null; }
 }
 
-/** 挂载后 N 秒仍无画面/无声音时给出可见提示，避免「黑屏但没人知道为什么」。 */
+function clearTicker() {
+  if (ticker) { clearInterval(ticker); ticker = null; }
+  progress.classList.remove('on');
+  progressBar.style.width = '0%';
+}
+
+/** Warn visibly when nothing appeared after N seconds — never a silent black screen. */
 function armWatchdog(isPlaying, message, delay = 7000) {
   clearWatchdog();
   watchdog = setTimeout(() => {
     try {
-      if (!isPlaying()) noteBanner(message);
-    } catch (e) { noteBanner(message); }
+      if (!isPlaying()) noteBanner(message, true);
+    } catch (e) { noteBanner(message, true); }
   }, delay);
 }
 
 function teardown() {
   clearWatchdog();
+  clearTicker();
+  generation += 1;           // anything still holding the old generation is stale
   if (ytPlayer) {
     try { ytPlayer.destroy(); } catch (e) { /* ignore */ }
     ytPlayer = null;
@@ -164,20 +438,61 @@ function teardown() {
     v.removeAttribute('src');
     try { v.load(); } catch (e) { /* ignore */ }
   }
-  stage.replaceChildren();   // 彻底清空：这就是 v1 缺失的「销毁重建」
+  stage.replaceChildren();   // full teardown: the thing v1 never did
+}
+
+function idleNode(text) {
+  const d = document.createElement('div');
+  d.className = 'idle';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  const rect = document.createElementNS(NS, 'path');
+  rect.setAttribute('d', 'M4 5.5h16a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 17V7A1.5 1.5 0 0 1 4 5.5z');
+  rect.setAttribute('stroke', 'currentColor');
+  rect.setAttribute('stroke-width', '1.4');
+  svg.appendChild(rect);
+  const play = document.createElementNS(NS, 'path');
+  play.setAttribute('d', 'M10 9.4v5.2l4.4-2.6z');
+  play.setAttribute('fill', 'currentColor');
+  svg.appendChild(play);
+  const span = document.createElement('span');
+  span.textContent = text;
+  d.append(svg, span);
+  return d;
 }
 
 function showIdle(text) {
-  const d = document.createElement('div');
-  d.className = 'idle';
-  d.textContent = text;
-  stage.replaceChildren(d);
+  stage.replaceChildren(idleNode(text));
 }
 
-function noteBanner(text) {
-  if (!text) { banner.classList.remove('show'); banner.textContent = ''; return; }
+function noteBanner(text, warn) {
+  if (!text) { banner.classList.remove('show', 'warn'); banner.textContent = ''; return; }
   banner.textContent = text;
   banner.classList.add('show');
+  banner.classList.toggle('warn', !!warn);
+}
+
+/* Progress and remaining time, local media only — iframes expose neither. */
+function startTicker(video) {
+  clearTicker();
+  progress.classList.add('on');
+  const paint = () => {
+    if (!video.duration || !isFinite(video.duration)) return;
+    const pct = Math.min(100, (video.currentTime / video.duration) * 100);
+    progressBar.style.width = pct.toFixed(1) + '%';
+    const left = Math.max(0, video.duration - video.currentTime);
+    nowEta.textContent = left >= 1 ? Math.ceil(left) + 's' : '—';
+  };
+  paint();
+  ticker = setInterval(paint, 250);
+  video.addEventListener('ended', () => { clearTicker(); nowEta.textContent = '—'; }, { once: true });
+}
+
+function setMuteLabel() {
+  muteBtn.lastChild.textContent = localMuted ? ' 已静音' : ' 静音';
 }
 
 function buildLocal(song) {
@@ -185,33 +500,40 @@ function buildLocal(song) {
     showIdle('这首歌缺少播放地址');
     return;
   }
+  const gen = generation;
   const video = document.createElement('video');
   video.src = song.url;
   video.autoplay = true;
   video.playsInline = true;
   video.controls = false;
   video.muted = localMuted;
-  video.addEventListener('ended', advance);
+  // A torn-down <video> can still fire 'ended' (its load()/removeAttribute race
+  // lands after teardown). Without this guard that stale event advances the
+  // queue a second time and silently skips a song.
+  video.addEventListener('ended', () => { if (gen === generation) advance(); });
   video.addEventListener('playing', () => {
     clearWatchdog();
+    startTicker(video);
     if (localMuted) noteBanner('已静音 · 点击画面开启声音');
-    // 不静音时别动 banner：可能正显示「队列空了，在播兜底曲目」
+    // When unmuted leave the banner alone: it may be explaining the fallback.
   });
   video.addEventListener('error', () => {
     clearWatchdog();
-    noteBanner('音频文件加载失败：' + song.url + '（检查 static 目录）');
+    noteBanner('音频文件加载失败：' + song.url + '（检查 static 目录）', true);
   });
   video.addEventListener('click', () => {
     video.muted = !video.muted;
     localMuted = video.muted;
+    setMuteLabel();
     noteBanner(video.muted ? '已静音 · 再点画面恢复' : '');
   });
   stage.appendChild(video);
 
   video.play().catch(() => {
-    // 自动播放被拦：静音后重试
+    // Autoplay blocked: retry muted, then tell the user what to click.
     video.muted = true;
     localMuted = true;
+    setMuteLabel();
     video.play().then(() => {
       noteBanner('浏览器拦了自动播放，已静音开始 · 点击画面开启声音');
     }).catch(() => {
@@ -249,11 +571,11 @@ async function buildYouTube(song) {
 
   if (!ok) {
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube.com/embed/${encodeURIComponent(song.id)}?autoplay=1`;
+    f.src = 'https://www.youtube.com/embed/' + encodeURIComponent(song.id) + '?autoplay=1';
     f.allow = 'autoplay; encrypted-media; picture-in-picture';
     f.allowFullscreen = true;
     stage.replaceChildren(f);
-    noteBanner('连不上 YouTube（youtube.com 无法访问）· 建议优先用 B站或本地曲目，点「跳过当前」换一首');
+    noteBanner('连不上 YouTube（youtube.com 无法访问）· 建议优先用 B站或本地曲目，点「跳过」换一首', true);
     return;
   }
 
@@ -262,81 +584,104 @@ async function buildYouTube(song) {
   stage.replaceChildren(holder);
   noteBanner('');
 
+  const gen = generation;
   ytPlayer = new YT.Player(holder.id, {
     videoId: song.id,
     playerVars: { autoplay: 1, rel: 0, playsinline: 1, origin: location.origin },
     events: {
       onReady: (e) => { try { e.target.playVideo(); } catch (err) {} },
       onStateChange: (e) => {
+        if (gen !== generation) return;                 // stale player
         if (e.data === YT.PlayerState.PLAYING) clearWatchdog();
-        if (e.data === YT.PlayerState.ENDED) advance();   // 播完自动下一首
+        if (e.data === YT.PlayerState.ENDED) advance();   // auto-advance on ENDED
       },
       onError: () => {
         clearWatchdog();
-        noteBanner('这首 YouTube 视频无法播放（被限制嵌入或已下架），点「跳过当前」换一首');
+        noteBanner('这首 YouTube 视频无法播放（被限制嵌入或已下架），点「跳过」换一首', true);
       }
     }
   });
 
   armWatchdog(
     () => ytPlayer && typeof ytPlayer.getPlayerState === 'function' && ytPlayer.getPlayerState() === 1,
-    '画面一直没起来：YouTube 可能被网络挡住，点「跳过当前」换一首',
+    '画面一直没起来：YouTube 可能被网络挡住，点「跳过」换一首',
     9000
   );
 }
 
 function buildBilibili(song) {
   const f = document.createElement('iframe');
-  f.src = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(song.id)}&autoplay=1&high_quality=1&danmaku=0`;
+  f.src = 'https://player.bilibili.com/player.html?bvid=' + encodeURIComponent(song.id) + '&autoplay=1&high_quality=1&danmaku=0';
   f.allow = 'autoplay; fullscreen';
   f.allowFullscreen = true;
   f.setAttribute('scrolling', 'no');
   stage.replaceChildren(f);
   noteBanner('B站嵌入没有「播完」回调：这首结束请手动点「下一首」');
-  // B站 iframe 跨域，探不到内部状态，只能给静态提示；不设看门狗避免误报
+  // Cross-origin: no readable state, so no watchdog — a false alarm is worse.
   clearWatchdog();
 }
 
 function mount(song) {
   teardown();
-  noteBanner('');            // 换歌先清掉上一首的提示
-  if (!song) { showIdle('队列空了，等待点歌…'); return; }
+  noteBanner('');            // clear the previous song's notice
+  if (!song) { showIdle('点「下一首」开始'); return; }
   if (song.kind === 'local') buildLocal(song);
   else if (song.kind === 'bilibili') buildBilibili(song);
   else buildYouTube(song);
 }
 
-/* ---------- 渲染 ---------- */
+/* ---------- rendering ---------- */
 
 function render(d) {
-  if (!d || d.error) { noteBanner(d && d.error ? d.error : '接口异常'); return; }
+  if (!d || d.error) { noteBanner(d && d.error ? d.error : '接口异常', true); setLive(false); return; }
+  setLive(true);
 
-  // 播放器：只在 seq 变化时重建（相同 id 连播两次也会重建）
+  // Player: rebuild only when the serial changed (same id twice still rebuilds).
   if (d.seq !== lastSeq) {
     lastSeq = d.seq;
     mount(d.current);
     if (d.current_source === 'fallback') noteBanner('队列空了，正在播兜底曲目');
   }
 
-  // 当前曲目文字
   if (d.current) {
     nowTitle.textContent = d.current.title;
-    nowBy.textContent = 'by ' + d.current.added_by;
-    dot.classList.add('pulse');
+    nowBy.textContent = 'by ' + d.current.added_by +
+      (d.current_source === 'fallback' ? ' · 兜底' : '');
+    nowStub.classList.remove('idle');
+    if (d.current.kind !== 'local') nowEta.textContent = '—';
   } else {
-    nowTitle.textContent = '—';
-    nowBy.textContent = '';
-    dot.classList.remove('pulse');
+    nowTitle.textContent = '还没有歌';
+    // Do not claim the queue is empty when it plainly is not — the stage and the
+    // side panel sit 40cm apart on the same screen and must not disagree.
+    nowBy.textContent = d.queue_length
+      ? d.queue_length + ' 首在等 · 点「下一首」开始'
+      : '队列为空 · 等客人扫码点歌';
+    nowEta.textContent = '—';
+    nowStub.classList.add('idle');
   }
 
-  // 队列列表：全部用 DOM API，绝不拼 HTML
+  renderQueue(d);
+  renderStats(d);
+}
+
+/* Same guard as the guest page: rebuilding on every 2s poll restarts the entry
+   animation, so the list flickers forever. Only touch the DOM when the queue
+   actually changed. */
+let queueSig = null;
+
+function renderQueue(d) {
+  const sig = d.queue.map((s) => s.id + '\u0000' + s.title + '\u0000' + s.added_by).join('\u0001');
+  if (sig === queueSig) return;
+  queueSig = sig;
+
+  // Queue: DOM API only, never string-built HTML.
   const list = document.getElementById('queue');
   list.replaceChildren();
   if (!d.queue.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.style.border = '0';
-    li.textContent = '队列是空的';
+    li.style.cssText = 'border:0;background:transparent;animation:none';
+    li.textContent = '队列是空的 · 扫码就能点';
     list.appendChild(li);
   } else {
     d.queue.forEach((s, i) => {
@@ -348,15 +693,16 @@ function render(d) {
 
       const t = document.createElement('span');
       t.className = 'qt';
-      t.textContent = s.title;          // textContent：曲名里的 HTML 只会当字显示
+      t.textContent = s.title;          // textContent: a title is never markup
       t.title = s.title;
 
       const b = document.createElement('span');
       b.className = 'qb';
-      b.textContent = s.added_by;
+      b.textContent = s.added_by.replace('guest_', '#');
 
       const btn = document.createElement('button');
       btn.className = 'del';
+      btn.type = 'button';
       btn.textContent = '删除';
       btn.addEventListener('click', () => {
         api('/api/remove', {
@@ -371,11 +717,22 @@ function render(d) {
     });
   }
 
-  document.getElementById('count').textContent = d.queue.length ? `(${d.queue.length})` : '';
+  document.getElementById('count').textContent = d.queue.length ? '(' + d.queue.length + ')' : '';
+}
 
+function renderStats(d) {
   const users = Object.keys(d.user_counts || {}).length;
-  document.getElementById('stats').textContent =
-    `在场 ${users} 人 · 每人上限 ${d.max_per_user} 首 · 播放序号 #${d.seq}`;
+  const stats = document.getElementById('stats');
+  stats.replaceChildren();
+  [['在场', users + ' 人'], ['每人上限', d.max_per_user + ' 首'],
+   ['排队', d.queue_length + ' 首'], ['序号', '#' + d.seq]].forEach(([label, value]) => {
+    const span = document.createElement('span');
+    span.textContent = label + ' ';
+    const b = document.createElement('b');
+    b.textContent = value;
+    span.appendChild(b);
+    stats.appendChild(span);
+  });
 }
 
 async function refresh() {
@@ -383,16 +740,39 @@ async function refresh() {
   render(d);
 }
 
-/* ---------- 交互 ---------- */
+/* ---------- join card ---------- */
+
+document.getElementById('btnCopy').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const addr = document.getElementById('joinAddr').textContent.trim();
+  try {
+    await navigator.clipboard.writeText(addr);
+  } catch (err) {
+    // The Clipboard API needs a secure context, and plain http on a LAN has
+    // none. Fall back to a temporary selection so the copy still works.
+    const ta = document.createElement('textarea');
+    ta.value = addr;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (err2) { /* nothing else to try */ }
+    document.body.removeChild(ta);
+  }
+  btn.textContent = '已复制';
+  btn.classList.add('done');
+  setTimeout(() => { btn.textContent = '复制地址'; btn.classList.remove('done'); }, 1600);
+});
+
+/* ---------- interaction ---------- */
 
 document.getElementById('btnNext').addEventListener('click', advance);
 document.getElementById('btnSkip').addEventListener('click', advance);
 
-document.getElementById('btnMute').addEventListener('click', (e) => {
+muteBtn.addEventListener('click', () => {
   localMuted = !localMuted;
   const v = stage.querySelector('video');
   if (v) v.muted = localMuted;
-  e.target.textContent = localMuted ? '🔇 已静音' : '🔊 取消静音';
+  setMuteLabel();
 });
 
 document.getElementById('btnClear').addEventListener('click', () => {
@@ -400,12 +780,11 @@ document.getElementById('btnClear').addEventListener('click', () => {
   api('/api/clear', { method: 'POST' }).then(render);
 });
 
-// 空格 = 下一首
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) {
-    e.preventDefault();
-    advance();
-  }
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (e.code === 'Space' || e.key === 'ArrowRight') { e.preventDefault(); advance(); return; }
+  if (e.key === 'm' || e.key === 'M') { muteBtn.click(); return; }
+  if (e.key === 'c' || e.key === 'C') { document.getElementById('btnClear').click(); }
 });
 
 setInterval(() => {

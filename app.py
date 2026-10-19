@@ -21,6 +21,7 @@ import uuid
 
 from flask import Flask, jsonify, render_template, request, session
 
+import qrmini
 from queue_engine import FairUniqueQueue, MAX_TITLE_LEN
 
 app = Flask(__name__)
@@ -151,6 +152,10 @@ def sanitize_local_url(url: str) -> str:
     return ""
 
 
+def _port() -> int:
+    return int(os.environ.get("SONGUP_PORT", "5000"))
+
+
 # ---------- 页面 ----------
 
 @app.get("/")
@@ -160,12 +165,16 @@ def index():
 
 @app.get("/host")
 def host_page():
+    join_url = "http://%s:%d" % (lan_ip(), _port())
     if HOST_KEY:
         key = request.args.get("key", "")
         if not secrets.compare_digest(key, HOST_KEY):
-            return render_template("host.html", host_key="", unlocked=False), 403
-        return render_template("host.html", host_key=key, unlocked=True)
-    return render_template("host.html", host_key="", unlocked=True)
+            return render_template("host.html", host_key="", unlocked=False,
+                                   join_url=join_url, join_qr=""), 403
+        return render_template("host.html", host_key=key, unlocked=True,
+                               join_url=join_url, join_qr=qrmini.svg(join_url)), 200
+    return render_template("host.html", host_key="", unlocked=True,
+                           join_url=join_url, join_qr=qrmini.svg(join_url))
 
 
 # ---------- 只读接口 ----------
@@ -273,10 +282,10 @@ def lan_ip() -> str:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("SONGUP_PORT", "5000"))
+    port = _port()
     ip = lan_ip()
     print("=" * 58)
-    print(" SongUp Queue v2")
+    print(" SongStub · 曲票")
     print(f" 主机页（投屏用）    http://{ip}:{port}/host")
     print(f" 客人页（发到群里）  http://{ip}:{port}")
     if HOST_KEY:

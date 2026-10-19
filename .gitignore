@@ -7,3 +7,4 @@ outputs/
 dom_guest.html
 .idea/
 .vscode/
+*.zip
