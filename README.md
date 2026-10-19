@@ -167,9 +167,12 @@ NODE_PATH=<全局 node_modules> node verify/docs-shot.cjs http://127.0.0.1:5000
 | 门禁 | 覆盖 | 最近一次结果 |
 |---|---|---|
 | `tests/test_queue.py` | 队列引擎 27 条回归，每条对应 v1 的一个实测缺陷 | 27 passed |
-| `verify/e2e.cjs` | 20 项行为契约：点歌、配额、播放器挂载、真在播、自动切、XSS 防线 | 20/20 |
+| `tests/test_qrmini.py` | 二维码编码器 12 条：golden 矩阵、结构、边界 | 12 passed |
+| `verify/e2e.cjs` | 20 项行为契约：点歌、配额、播放器挂载、真在播、自动切、XSS 防线 | 20/20（连跑两次） |
 | `verify/responsive.cjs` | 6 宽度 × 2 页面的溢出、目标尺寸、**从计算样式算出的**对比度、外部请求、reduced-motion、二维码 | 67/67 |
 | `tools/verify_qr.py` | 15 个具名样本 + 长度 1–213 全扫，与参考库逐位一致 | 16/16 |
+| `tools/make_zip.py` | 打包后重读逐文件比 SHA-256，并在解压副本里跑测试与 import | 53/53 |
+| `tools/check_readme.py` | README 里每张图、每个本地链接都真实存在 | 4 images + 4 links |
 
 ### 适配与可访问性的具体数字
 
@@ -178,7 +181,7 @@ NODE_PATH=<全局 node_modules> node verify/docs-shot.cjs http://127.0.0.1:5000
 - **无横向溢出**：320 / 390 / 768 / 1024 / 1366 / 1920 六档，`scrollWidth <= clientWidth` 全部成立。
 - **交互目标 ≥ 24×24 CSS px**（WCAG 2.5.8）：页脚那个 15px 高的链接曾不达标，已改为 `inline-block` + padding。
 - **对比度**：598 个文本样本，从 `getComputedStyle` 取前景色、沿祖先链找实际背景色再算 WCAG 比值；
-  正文门槛 4.5:1，大字 3:1。最差样本 4.60:1。
+  正文门槛 4.5:1，大字 3:1。最差样本 5.18:1。
 - **外部请求**：客人页 0 次；主机页只有 `youtube.com/iframe_api`（且失败会给出可见提示）。
 - **reduced-motion**：`prefers-reduced-motion: reduce` 下票根的 `rotate(-.5deg)` 归零。
 
